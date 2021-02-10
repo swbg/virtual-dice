@@ -1,6 +1,5 @@
 import World from "./World";
 
-
 const App = () => {
   return (
     <div className="app">
