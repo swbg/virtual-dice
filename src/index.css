@@ -9,3 +9,12 @@ body {
   height: 100%;
   overflow: hidden;
 }
+
+.controls {
+  position: absolute;
+}
+
+.info {
+  position: absolute;
+  bottom: 0;
+}
