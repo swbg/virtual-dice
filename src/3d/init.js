@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
 
 import woodTexture from "../assets/parquet_seamless_6833.jpg";
+import wallpaperTexture from "../assets/plaster_seamless_6749.jpg";
 import diceOne from "../assets/one.svg";
 import diceTwo from "../assets/two.svg";
 import diceThree from "../assets/three.svg";
@@ -13,7 +14,7 @@ import diceSix from "../assets/six.svg";
 var scene, camera, renderer, controls, groundMesh, cubeMesh, light; // THREE
 var world, cubeBody, jointBody, groundBody; // CANNON
 var raycaster, mouseConstraint, mousePlaneMesh; // for picking
-var targetPerspectiveVector = new THREE.Vector3(0, 2, 3);
+var targetPerspectiveVector = new THREE.Vector3(0, 2.5, 2);
 var residualPerspectiveVector = new THREE.Vector3(0, 0, 0);
 var updatePerspective = true;
 var wasReleased = false;
@@ -25,8 +26,11 @@ const cubeMass = 4;
 const controlsActive = false;
 const startPosition = new THREE.Vector3(0, 5, 0);
 const startQuaternion = new THREE.Vector4(0, 0, 0, 1);
-const groundLength = 100;
+const groundLength = 80;
 const velocityThreshold = 0.001;
+const textureAnisotropy = 16;
+
+var cannonWalls = [];
 
 const topFace = 5;
 const frontFace = 1;
@@ -119,7 +123,7 @@ const getIntersectedObject = (clientX, clientY, uuid) => {
 
 const cubeStable = () => {
   return (
-    cubeBody.position.y <= 0.5 &&
+    cubeBody.position.y <= cubeEdgeLength * 0.7 &&
     cubeBody.velocity.x < velocityThreshold &&
     cubeBody.velocity.y < velocityThreshold &&
     cubeBody.velocity.z < velocityThreshold
@@ -211,14 +215,63 @@ const initCannon = () => {
   jointBody = new CANNON.Body({ mass: 0 });
 
   // Ground
-  const groundShape = new CANNON.Plane();
   groundBody = new CANNON.Body({ mass: 0 });
-  groundBody.addShape(groundShape);
+  groundBody.addShape(new CANNON.Plane());
   groundBody.quaternion.setFromAxisAngle(
     new CANNON.Vec3(1, 0, 0),
     -Math.PI / 2
   );
   world.addBody(groundBody);
+
+  // Floor
+  const floorBody = new CANNON.Body({ mass: 0 });
+  floorBody.addShape(new CANNON.Plane());
+  floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
+  floorBody.position.set(0, groundLength, 0);
+  world.addBody(floorBody);
+
+  // Walls
+  const backWallBody = new CANNON.Body({ mass: 0 });
+  backWallBody.addShape(new CANNON.Plane());
+  backWallBody.position.set(0, 0, -groundLength / 2);
+  world.addBody(backWallBody);
+
+  const frontWallBody = new CANNON.Body({ mass: 0 });
+  frontWallBody.addShape(new CANNON.Plane());
+  frontWallBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI);
+  frontWallBody.position.set(0, 0, groundLength / 2);
+  world.addBody(frontWallBody);
+
+  const leftWallBody = new CANNON.Body({ mass: 0 });
+  leftWallBody.addShape(new CANNON.Plane());
+  leftWallBody.quaternion.setFromAxisAngle(
+    new CANNON.Vec3(0, 1, 0),
+    Math.PI / 2
+  );
+  leftWallBody.position.set(-groundLength / 2, 0, 0);
+  world.addBody(leftWallBody);
+
+  const rightWallBody = new CANNON.Body({ mass: 0 });
+  rightWallBody.addShape(new CANNON.Plane());
+  rightWallBody.quaternion.setFromAxisAngle(
+    new CANNON.Vec3(0, 1, 0),
+    -Math.PI / 2
+  );
+  rightWallBody.position.set(groundLength / 2, 0, 0);
+  world.addBody(rightWallBody);
+
+  cannonWalls = [backWallBody, frontWallBody, leftWallBody, rightWallBody];
+};
+
+const addThreeWall = (cannonWall, texture) => {
+  const geometry = new THREE.PlaneGeometry(groundLength + 20, groundLength);
+  const material = new THREE.MeshStandardMaterial({ map: texture });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
+  mesh.position.copy(cannonWall.position);
+  mesh.position.y = groundLength / 2;
+  mesh.quaternion.copy(cannonWall.quaternion);
+  scene.add(mesh);
 };
 
 const initThree = (setPipsFunction) => {
@@ -257,14 +310,21 @@ const initThree = (setPipsFunction) => {
     cubeEdgeLength,
     cubeEdgeLength
   );
-  const cubeMaterials = [
-    new THREE.MeshStandardMaterial({ map: loader.load(diceThree) }),
-    new THREE.MeshStandardMaterial({ map: loader.load(diceFour) }),
-    new THREE.MeshStandardMaterial({ map: loader.load(diceFive) }),
-    new THREE.MeshStandardMaterial({ map: loader.load(diceTwo) }),
-    new THREE.MeshStandardMaterial({ map: loader.load(diceOne) }),
-    new THREE.MeshStandardMaterial({ map: loader.load(diceSix) }),
-  ];
+  const textures = [
+    diceThree,
+    diceFour,
+    diceFive,
+    diceTwo,
+    diceOne,
+    diceSix,
+  ].map((svg) => loader.load(svg));
+  for (let texture of textures) {
+    texture.anisotropy = textureAnisotropy;
+  }
+  const cubeMaterials = textures.map(
+    (texture) => new THREE.MeshStandardMaterial({ map: texture })
+  );
+
   cubeMesh = new THREE.Mesh(cubeGeometry, cubeMaterials);
   cubeMesh.castShadow = true;
   cubeMesh.receiveShadow = true;
@@ -288,24 +348,33 @@ const initThree = (setPipsFunction) => {
   }
 
   // Ground
-  const groundGeometry = new THREE.PlaneGeometry(groundLength, groundLength);
+  const groundGeometry = new THREE.PlaneGeometry(
+    groundLength,
+    groundLength + 20
+  );
   const groundTexture = loader.load(woodTexture);
   groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
-  groundTexture.repeat.set(10, 10);
-  groundTexture.anisotropy = 16;
+  groundTexture.repeat.set(groundLength / 10, groundLength / 10);
+  groundTexture.anisotropy = textureAnisotropy;
   groundTexture.encoding = THREE.sRGBEncoding;
 
   const groundMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
   const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-  groundMesh.rotation.x = -Math.PI / 2;
   groundMesh.receiveShadow = true;
   groundMesh.position.copy(groundBody.position);
   groundMesh.quaternion.copy(groundBody.quaternion);
   scene.add(groundMesh);
 
+  const wallTexture = loader.load(wallpaperTexture);
+  wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
+  wallTexture.repeat.set(10, 10);
+  wallTexture.anisotropy = textureAnisotropy;
+  wallTexture.encoding = THREE.sRGBEncoding;
+  cannonWalls.forEach((wall) => addThreeWall(wall, wallTexture));
+
   // Light
-  scene.add(new THREE.AmbientLight(0xaaaaaa, 0.4));
-  light = new THREE.DirectionalLight(0xaaaaaa, 1);
+  scene.add(new THREE.AmbientLight(0xefefef, 0.8));
+  light = new THREE.DirectionalLight(0x404040, 1);
   light.castShadow = true;
   light.target = cubeMesh;
   scene.add(light);
@@ -319,7 +388,7 @@ const initThree = (setPipsFunction) => {
   light.shadow.camera.near = 1;
   light.shadow.camera.far = groundLength * 4 * 2;
 
-  light.position.set(-groundLength / 2, groundLength * 4, groundLength / 2);
+  light.position.set(-groundLength / 2, groundLength * 4, groundLength / 3);
 
   light.shadow.mapSize.width = 2048;
   light.shadow.mapSize.height = 2048;
@@ -347,9 +416,23 @@ const initThree = (setPipsFunction) => {
 
   // Event handlers
   window.addEventListener("resize", onWindowResize);
+
   window.addEventListener("mousedown", onMouseDown);
   window.addEventListener("mouseup", onMouseUp);
   window.addEventListener("mousemove", onMouseMove);
+
+  window.addEventListener(
+    "touchstart",
+    (event) => {
+      event.preventDefault();
+      onMouseDown(event.touches[0]);
+    },
+    { passive: false }
+  );
+  window.addEventListener("touchend", onMouseUp);
+  window.addEventListener("touchmove", (event) => {
+    onMouseMove(event.touches[0]);
+  });
 };
 
 export { initCannon, initThree, animate, resetCube };
