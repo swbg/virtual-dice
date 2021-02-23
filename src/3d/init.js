@@ -17,8 +17,6 @@ var raycaster, mouseConstraint, mousePlaneMesh; // for picking
 var targetPerspectiveVector = new THREE.Vector3(0, 2.5, 2);
 var residualPerspectiveVector = new THREE.Vector3(0, 0, 0);
 var updatePerspective = true;
-var wasReleased = false;
-var wasPicked = false;
 var setPips;
 
 const cubeEdgeLength = 1;
@@ -27,8 +25,17 @@ const controlsActive = false;
 const startPosition = new THREE.Vector3(0, 5, 0);
 const startQuaternion = new THREE.Vector4(0, 0, 0, 1);
 const groundLength = 80;
-const velocityThreshold = 0.001;
 const textureAnisotropy = 16;
+
+const trackedVelocities = {
+  x: [],
+  y: [],
+  z: [],
+}
+var velocityCounter = 0;
+const nVelocities = 10;
+const stableVelocityThreshold = 0.001 * nVelocities;
+const unstableVelocityThreshold = 1 * nVelocities;
 
 var cannonWalls = [];
 
@@ -75,12 +82,11 @@ const animate = () => {
   if (updatePerspective) {
     updateCamera();
   }
+  trackVelocities();
   if (cubeMesh.position.y < cubeEdgeLength / 4) {
     onMouseUp(null);
   }
-  if (wasPicked && wasReleased && cubeStable()) {
-    wasReleased = false;
-    wasPicked = false;
+  if (cubeStable()) {
     faceCubes.forEach((cube, index) => {
       const tmp = new THREE.Vector3();
       cube.getWorldPosition(tmp);
@@ -88,6 +94,8 @@ const animate = () => {
         setPips(faceCubePips[index]);
       }
     });
+  } else if (cubeUnstable()) {
+    setPips(null);
   }
   render();
 };
@@ -121,14 +129,30 @@ const getIntersectedObject = (clientX, clientY, uuid) => {
   return null;
 };
 
+const trackVelocities = () => {
+  for (let dir of ["x", "y", "z"]) {
+    trackedVelocities[dir][velocityCounter] = cubeBody.velocity[dir];
+  }
+  velocityCounter = (velocityCounter + 1) % nVelocities;
+}
+
 const cubeStable = () => {
   return (
-    cubeBody.position.y <= cubeEdgeLength * 0.7 &&
-    cubeBody.velocity.x < velocityThreshold &&
-    cubeBody.velocity.y < velocityThreshold &&
-    cubeBody.velocity.z < velocityThreshold
+    cubeBody.position.y <= cubeEdgeLength &&
+    trackedVelocities.x.reduce((a, b) => a + b, 0) <= stableVelocityThreshold &&
+    trackedVelocities.y.reduce((a, b) => a + b, 0) <= stableVelocityThreshold &&
+    trackedVelocities.z.reduce((a, b) => a + b, 0) <= stableVelocityThreshold
   );
 };
+
+const cubeUnstable = () => {
+  return (
+    cubeBody.position.y > cubeEdgeLength ||
+    trackedVelocities.x.reduce((a, b) => a + b, 0) > unstableVelocityThreshold ||
+    trackedVelocities.y.reduce((a, b) => a + b, 0) > unstableVelocityThreshold ||
+    trackedVelocities.z.reduce((a, b) => a + b, 0) > unstableVelocityThreshold
+  );
+}
 
 const onMouseDown = (e) => {
   if (!cubeStable()) {
@@ -139,7 +163,6 @@ const onMouseDown = (e) => {
 
   if (clickObject) {
     setPips(null);
-    wasPicked = true;
     updatePerspective = false;
     setMousePlane(clickObject.point);
 
@@ -159,7 +182,6 @@ const onMouseDown = (e) => {
 };
 
 const onMouseUp = (e) => {
-  wasReleased = true;
   world.removeConstraint(mouseConstraint);
   mouseConstraint = null;
   residualPerspectiveVector.copy(
@@ -210,6 +232,8 @@ const initCannon = () => {
   cubeBody.addShape(cubeShape);
   cubeBody.position.copy(startPosition);
   world.addBody(cubeBody);
+
+  resetCube();
 
   // Joint
   jointBody = new CANNON.Body({ mass: 0 });
@@ -417,10 +441,12 @@ const initThree = (setPipsFunction) => {
   // Event handlers
   window.addEventListener("resize", onWindowResize);
 
+  // Desktop
   window.addEventListener("mousedown", onMouseDown);
   window.addEventListener("mouseup", onMouseUp);
   window.addEventListener("mousemove", onMouseMove);
 
+  // Mobile
   window.addEventListener(
     "touchstart",
     (event) => {
@@ -433,6 +459,25 @@ const initThree = (setPipsFunction) => {
   window.addEventListener("touchmove", (event) => {
     onMouseMove(event.touches[0]);
   });
+
+  // Acceleration
+  window.addEventListener("devicemotion", onDeviceMotion)
 };
+
+const onDeviceMotion = (e) => {
+  const { x, y, z } = e.acceleration;
+  const thresh = 0.1;
+  const scale = 0.15;
+
+  if (cubeBody.velocity.x * x <= thresh) {
+    cubeBody.velocity.x -= x * scale;
+  }
+  if (cubeBody.velocity.z * z >= -thresh) {
+    cubeBody.velocity.z += z * scale;
+  }
+  if (cubeBody.velocity.y * y <= thresh) {
+    cubeBody.velocity.y -= y * scale * scale;
+  }
+}
 
 export { initCannon, initThree, animate, resetCube };
