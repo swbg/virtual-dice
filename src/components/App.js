@@ -13,9 +13,14 @@ const App = () => {
     animate();
   }, []);
 
+  const resetApp = () => {
+    resetCube();
+    setPips(null);
+  };
+
   return (
     <div className="app">
-      <Controls resetCube={resetCube} />
+      <Controls resetApp={resetApp} />
       <Info pips={pips} />
     </div>
   );

@@ -1,7 +1,7 @@
-const Controls = ({ resetCube }) => {
+const Controls = ({ resetApp }) => {
   return (
     <div className="controls">
-      <button onClick={resetCube}>Reset</button>
+      <button className="resetButton" onClick={resetApp} onTouchEnd={resetApp}>Reset</button>
     </div>
   );
 };

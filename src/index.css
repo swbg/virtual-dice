@@ -1,6 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@300&display=swap');  /* 'Rubik', sans-serif; */
+
 * {
   margin: 0;
   padding: 0;
+  font-family: 'Rubik', sans-serif;
 }
 
 html,
@@ -12,9 +15,21 @@ body {
 
 .controls {
   position: absolute;
+  width: 100%;
 }
 
 .info {
   position: absolute;
+  width: 100%;
   bottom: 0;
+}
+
+.resetButton, .infoField {
+  margin: 0.5em auto;
+  display: table;
+  font-size: 2em;
+  border-radius: 999px;
+  border: none;
+  padding: 0.15em 0.8em;
+  background: linear-gradient(to top right, rgba(230, 250, 250, 0.75), rgba(230, 250, 250, 0.4))
 }
